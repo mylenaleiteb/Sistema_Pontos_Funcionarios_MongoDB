@@ -1,1 +1,0 @@
-# Sistema_Pontos_Funcionarios_MongoDB
