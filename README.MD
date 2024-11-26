@@ -1,6 +1,6 @@
 # Sistema em Python fazendo CRUD no Oracle
 
-Esse sistema de exemplo é composto por um conjunto de tabelas que representam pontos de funcionários, contendo tabelas como: pontos e funcionarios.
+Esse sistema é composto por um conjunto de tabelas que representam pontos de funcionários, contendo tabelas como: pontos e funcionarios.
 
 O sistema exige que as tabelas existam, então basta executar o script Python a seguir para criação das tabelas e preenchimento de dados de exemplos:
 ```shell
