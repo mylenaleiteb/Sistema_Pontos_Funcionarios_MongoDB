@@ -36,8 +36,7 @@ class RelatorioMongo:
             mongo = MongoQueries()
             mongo.connect()
             
-            query_result = list(self.mongo.db.PONTOS.find(
-                {}, 
+            query_result = mongo.db["pontos"].find({}, 
                 {
                     "codigo_ponto": 1,
                     "data_ponto": 1,
@@ -46,15 +45,7 @@ class RelatorioMongo:
                     "codigo_funcionario": 1,
                     "_id": 0
                 }
-            ).sort([("codigo_funcionario", 1), ("data_ponto", 1)]))
-            
-            for doc in query_result:
-                if "hora_entrada" in doc and doc["hora_entrada"]:
-                    doc["hora_entrada"] = doc["hora_entrada"].strftime("%H:%M")
-                if "hora_saida" in doc and doc["hora_saida"]:
-                    doc["hora_saida"] = doc["hora_saida"].strftime("%H:%M")
-                if "data_ponto" in doc and doc["data_ponto"]:
-                    doc["data_ponto"] = doc["data_ponto"].strftime("%d/%m/%Y")
+            ).sort([("codigo_funcionario", 1), ("data_ponto", 1)])
         
             df_pontos = pd.DataFrame(list(query_result))
             mongo.close()
