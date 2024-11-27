@@ -51,23 +51,26 @@ class RelatorioMongo:
             mongo.close()
             print(df_pontos)
             input("Pressione Enter para Sair do Relatório de Pontos")
-            
+             
     def get_relatorio_pontos_funcionarios(self):
         try:
-            self.mongo.connect()
+            # Conectar ao MongoDB
+            mongo = MongoQueries()
+            mongo.connect()
             
-            # Verificar se existem documentos nas coleções
-            func_count = self.mongo.db.FUNCIONARIOS.count_documents({})
-            pontos_count = self.mongo.db.PONTOS.count_documents({})
+            # Verificar se as coleções têm documentos
+            func_count = mongo.db["funcionarios"].count_documents({})
+            pontos_count = mongo.db["pontos"].count_documents({})
             
             if func_count == 0 or pontos_count == 0:
                 print("\nUma ou ambas as coleções (FUNCIONARIOS/PONTOS) estão vazias.")
                 return
-            
+                
+            # Pipeline para agregar dados de funcionários e pontos
             pipeline = [
                 {
                     "$lookup": {
-                        "from": "PONTOS",
+                        "from": "pontos",
                         "localField": "codigo_funcionario",
                         "foreignField": "codigo_funcionario",
                         "as": "pontos"
@@ -75,6 +78,7 @@ class RelatorioMongo:
                 },
                 {
                     "$project": {
+                        "_id": 0,  # Excluir o campo _id
                         "codigo_funcionario": 1,
                         "nome": 1,
                         "cargo": 1,
@@ -84,10 +88,19 @@ class RelatorioMongo:
                                     "input": "$pontos",
                                     "as": "p",
                                     "cond": {
-                                        "$gt": [
-                                            {"$hour": "$$p.hora_entrada"},
-                                            8
-                                        ]
+                                        "$let": {
+                                            "vars": {
+                                                "hora": {
+                                                    "$substr": ["$$p.hora_entrada", 0, 2]
+                                                }
+                                            },
+                                            "in": {
+                                                "$gt": [
+                                                    {"$toInt": "$$hora"},
+                                                    8
+                                                ]
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -95,34 +108,61 @@ class RelatorioMongo:
                         "total_horas_trabalhadas": {
                             "$round": [
                                 {
-                                    "$divide": [
-                                        {
-                                            "$sum": {
-                                                "$map": {
-                                                    "input": "$pontos",
-                                                    "as": "p",
+                                    "$sum": {
+                                        "$map": {
+                                            "input": "$pontos",
+                                            "as": "p",
+                                            "in": {
+                                                "$let": {
+                                                    "vars": {
+                                                        "entrada_hora": {"$toInt": {"$substr": ["$$p.hora_entrada", 0, 2]}},
+                                                        "entrada_min": {"$toInt": {"$substr": ["$$p.hora_entrada", 3, 2]}},
+                                                        "saida_hora": {"$toInt": {"$substr": ["$$p.hora_saida", 0, 2]}},
+                                                        "saida_min": {"$toInt": {"$substr": ["$$p.hora_saida", 3, 2]}}
+                                                    },
                                                     "in": {
-                                                        "$subtract": [
-                                                            {"$add": [
-                                                                {"$multiply": [{"$hour": "$$p.hora_saida"}, 60]},
-                                                                {"$minute": "$$p.hora_saida"}
-                                                            ]},
-                                                            {"$add": [
-                                                                {"$multiply": [{"$hour": "$$p.hora_entrada"}, 60]},
-                                                                {"$minute": "$$p.hora_entrada"}
-                                                            ]}
+                                                        "$divide": [
+                                                            {
+                                                                "$add": [
+                                                                    {
+                                                                        "$multiply": [
+                                                                            {
+                                                                                "$subtract": ["$$saida_hora", "$$entrada_hora"]
+                                                                            },
+                                                                            60
+                                                                        ]
+                                                                    },
+                                                                    {
+                                                                        "$subtract": ["$$saida_min", "$$entrada_min"]
+                                                                    }
+                                                                ]
+                                                            },
+                                                            60
                                                         ]
                                                     }
                                                 }
                                             }
-                                        },
-                                        60
+                                        }
+                                    }
+                                },
+                                2
+                            ]
+                        }
+                    }
+                },
+                {
+                    "$addFields": {
+                        "horas_a_complementar": {
+                            "$round": [
+                                {
+                                    "$subtract": [
+                                        240,  # Total de horas mensais esperadas
+                                        "$total_horas_trabalhadas"
                                     ]
                                 },
                                 2
                             ]
-                        },
-                        "_id": 0
+                        }
                     }
                 },
                 {
@@ -130,17 +170,17 @@ class RelatorioMongo:
                 }
             ]
             
-            query_result = list(self.mongo.db.FUNCIONARIOS.aggregate(pipeline))
+            # Executar a agregação
+            query_result = list(mongo.db["funcionarios"].aggregate(pipeline))
             
-            # Calcular horas a complementar (assumindo 240 horas mensais)
-            for doc in query_result:
-                doc['horas_a_complementar'] = round(240 - (doc['total_horas_trabalhadas'] or 0), 2)
-                
-            df_pontos_funcionarios = pd.DataFrame(query_result)
-            self.check_data(df_pontos_funcionarios, "Pontos por Funcionários")
+            # Converter o resultado em um DataFrame
+            df_relatorio = pd.DataFrame(query_result)
+            
+            # Verificar e exibir o DataFrame
+            self.check_data(df_relatorio, "Relatório de Pontos por Funcionário")
             
         except Exception as e:
-            print(f"Erro ao gerar relatório de pontos por funcionários: {str(e)}")
+            print(f"Erro ao gerar relatório de pontos por funcionário: {str(e)}")
         finally:
-            self.mongo.close()
-            input("\nPressione Enter para Sair do Relatório de Pontos por Funcionários")
+            mongo.close()
+            input("\nPressione Enter para Sair do Relatório de Pontos por Funcionário")
