@@ -30,14 +30,15 @@ class Controller_Ponto:
                 hora_entrada = input("Hora de Entrada (HH:MM): ")
                 hora_saida = input("Hora de Saída (HH:MM): ")
 
-                # Validar os formatos de data e hora
-                datetime.strptime(data_ponto, '%Y-%m-%d')
-                datetime.strptime(hora_entrada, '%H:%M')
-                datetime.strptime(hora_saida, '%H:%M')
+                # Padronizar data e hora para o formato esperado
+                data_ponto = datetime.strptime(data_ponto, '%Y-%m-%d').strftime('%Y-%m-%d')
+                hora_entrada = datetime.strptime(hora_entrada, '%H:%M').strftime('%H:%M:%S')
+                hora_saida = datetime.strptime(hora_saida, '%H:%M').strftime('%H:%M:%S')
             except ValueError:
                 print("Data ou hora inválida. Por favor, insira os dados no formato correto.")
                 self.mongo.close()
                 return None
+
 
             # Recupera o próximo código disponível
             max_ponto = self.mongo.db['pontos'].find_one(sort=[('codigo_ponto', -1)])

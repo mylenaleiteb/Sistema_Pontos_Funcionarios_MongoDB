@@ -40,7 +40,7 @@ class Ponto:
         try:
             # Tenta converter a string da data para objeto datetime
             if isinstance(self.get_data_ponto(), str):
-                data = datetime.strptime(self.get_data_ponto(), '%d-%m-%Y')
+                data = datetime.strptime(self.get_data_ponto(), '%Y-%m-%d')
             else:
                 data = pd.to_datetime(self.get_data_ponto())
 
