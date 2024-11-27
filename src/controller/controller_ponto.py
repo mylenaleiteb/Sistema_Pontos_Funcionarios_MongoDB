@@ -1,136 +1,210 @@
 from datetime import datetime
-from conexion.oracle_queries import OracleQueries
+import pandas as pd
 from model.funcionarios import Funcionario
 from model.pontos import Ponto
 from controller.controller_funcionario import Controller_Funcionario
+from conexion.mongo_queries import MongoQueries
 
 class Controller_Ponto:
     def __init__(self):
         self.ctrl_funcionario = Controller_Funcionario()
-
+        self.mongo = MongoQueries()
+        
     def inserir_ponto(self) -> Ponto:
-        oracle = OracleQueries()
-        oracle.connect()
+        # Cria uma nova conexão com o banco
+        self.mongo.connect()
 
         try:
-            codigo_funcionario = int(input("Código do Funcionário: "))
+            codigo_funcionario = input("Código do Funcionário: ")
         except ValueError:
             print("Entrada inválida. O código do funcionário deve ser um número inteiro.")
             return None
         
         # Verifica se o funcionário existe
-        if not self.ctrl_funcionario.verifica_existencia_funcionario(oracle, codigo_funcionario):
+        if not self.ctrl_funcionario.verifica_existencia_funcionario(codigo_funcionario, external=True):
+            # Busca os dados do funcionário
+            df_funcionario = self.ctrl_funcionario.recupera_funcionario(codigo_funcionario, external=True)
+            
+            try:
+                data_ponto = input("Data (YYYY-MM-DD): ")
+                hora_entrada = input("Hora de Entrada (HH:MM): ")
+                hora_saida = input("Hora de Saída (HH:MM): ")
+
+                # Validar os formatos de data e hora
+                datetime.strptime(data_ponto, '%Y-%m-%d')
+                datetime.strptime(hora_entrada, '%H:%M')
+                datetime.strptime(hora_saida, '%H:%M')
+            except ValueError:
+                print("Data ou hora inválida. Por favor, insira os dados no formato correto.")
+                self.mongo.close()
+                return None
+
+            # Recupera o próximo código disponível
+            max_ponto = self.mongo.db['pontos'].find_one(sort=[('codigo_ponto', -1)])
+            proximo_codigo = '1' if not max_ponto else str(int(max_ponto['codigo_ponto']) + 1)
+
+            # Insere o novo ponto
+            self.mongo.db['pontos'].insert_one({
+                'codigo_ponto': proximo_codigo,
+                'data_ponto': data_ponto,
+                'hora_entrada': hora_entrada,
+                'hora_saida': hora_saida,
+                'codigo_funcionario': codigo_funcionario
+            })
+
+            # Cria o objeto Funcionario
+            funcionario = Funcionario(
+                df_funcionario.codigo_funcionario.values[0],
+                df_funcionario.nome.values[0],
+                df_funcionario.cargo.values[0]
+            )
+            
+            # Cria o objeto Ponto
+            novo_ponto = Ponto(proximo_codigo, data_ponto, hora_entrada, hora_saida, funcionario)
+            
+            print("Ponto registrado com sucesso:")
+            print(f"Código: {novo_ponto.get_codigo_ponto()}")
+            print(f"Data: {novo_ponto.get_data_ponto()}")
+            print(f"Entrada: {novo_ponto.get_hora_entrada()}")
+            print(f"Saída: {novo_ponto.get_hora_saida()}")
+            print(f"Funcionário: {novo_ponto.get_funcionario().get_nome()}")
+            
+            self.mongo.close()
+            return novo_ponto
+        else:
             print(f"O código {codigo_funcionario} não existe.")
+            self.mongo.close()
             return None
-        
-        # Busca o nome do funcionário pelo código
-        query_nome_funcionario = f"SELECT nome FROM funcionarios WHERE codigo_funcionario = {codigo_funcionario}"
-        df_funcionario = oracle.sqlToDataFrame(query_nome_funcionario)
-        nome_funcionario = df_funcionario['nome'].values[0]
-
-        try:
-            data_ponto = input("Data (YYYY-MM-DD): ")
-            hora_entrada = input("Hora de Entrada (HH:MM): ")
-            hora_saida = input("Hora de Saída (HH:MM): ")
-        except ValueError:
-            print("Data ou hora inválida. Por favor, insira os dados no formato correto.")
-            return None
-
-        cursor = oracle.connect()
-        output_value = cursor.var(int)
-
-        data_ponto_dict = {
-            "codigo_ponto": output_value, 
-            "data_ponto": data_ponto,  
-            "hora_entrada": hora_entrada, 
-            "hora_saida": hora_saida, 
-            "codigo_funcionario": codigo_funcionario
-        }
-
-        cursor.execute("""
-        begin
-            :codigo_ponto := PONTOS_CODIGO_PONTO_SEQ.NEXTVAL;
-            insert into pontos (codigo_ponto, data_ponto, hora_entrada, hora_saida, codigo_funcionario)
-            values (:codigo_ponto, TO_DATE(:data_ponto, 'YYYY-MM-DD'), TO_DATE(:hora_entrada, 'HH24:MI'), TO_DATE(:hora_saida, 'HH24:MI'), :codigo_funcionario);
-        end;
-        """, data_ponto_dict)
-
-        codigo_ponto = output_value.getvalue()
-        oracle.conn.commit()
-
-        # Cria o objeto Funcionario com o nome correto
-        funcionario = Funcionario(codigo_funcionario, nome_funcionario, "")
-        
-        # Cria o objeto Ponto com o nome do funcionário preenchido
-        novo_ponto = Ponto(codigo_ponto, data_ponto, hora_entrada, hora_saida, funcionario)
-        print(novo_ponto)
-        return novo_ponto
 
     def atualizar_ponto(self) -> Ponto:
-        oracle = OracleQueries(can_write=True)
-        oracle.connect()
+        self.mongo.connect()
 
         try:
-            codigo_ponto = int(input("Código do Ponto que irá alterar: "))
+            codigo_ponto = input("Código do Ponto que irá alterar: ")
         except ValueError:
             print("Entrada inválida. O código do ponto deve ser um número inteiro.")
             return None
 
-        if not self.verifica_existencia_ponto(oracle, codigo_ponto):
+        if not self.verifica_existencia_ponto(codigo_ponto):
             try:
                 nova_data = input("Nova Data (YYYY-MM-DD): ")
                 nova_hora_entrada = input("Nova Hora de Entrada (HH:MM): ")
                 nova_hora_saida = input("Nova Hora de Saída (HH:MM): ")
+
+                # Validar os formatos de data e hora
+                datetime.strptime(nova_data, '%Y-%m-%d')
+                datetime.strptime(nova_hora_entrada, '%H:%M')
+                datetime.strptime(nova_hora_saida, '%H:%M')
             except ValueError:
                 print("Data ou hora inválida. Por favor, insira os dados no formato correto.")
+                self.mongo.close()
                 return None
 
-            oracle.write(f"""
-                update pontos 
-                set data_ponto = TO_DATE('{nova_data}', 'YYYY-MM-DD'), 
-                    hora_entrada = TO_DATE('{nova_hora_entrada}', 'HH24:MI'), 
-                    hora_saida = TO_DATE('{nova_hora_saida}', 'HH24:MI') 
-                where codigo_ponto = {codigo_ponto}
-            """)
+            # Atualiza o ponto
+            self.mongo.db['pontos'].update_one(
+                {'codigo_ponto': codigo_ponto},
+                {'$set': {
+                    'data_ponto': nova_data,
+                    'hora_entrada': nova_hora_entrada,
+                    'hora_saida': nova_hora_saida
+                }}
+            )
 
-            df_ponto = oracle.sqlToDataFrame(f"""
-                select p.codigo_ponto, p.data_ponto, p.hora_entrada, p.hora_saida, 
-                    f.codigo_funcionario, f.nome 
-                from pontos p
-                join funcionarios f on p.codigo_funcionario = f.codigo_funcionario
-                where p.codigo_ponto = {codigo_ponto}
-            """)
+            # Recupera o ponto atualizado
+            ponto_atualizado = self.mongo.db['pontos'].find_one({'codigo_ponto': codigo_ponto})
+            
+            # Recupera os dados do funcionário
+            df_funcionario = self.ctrl_funcionario.recupera_funcionario(
+                ponto_atualizado['codigo_funcionario'], 
+                external=True
+            )
 
-            funcionario = Funcionario(df_ponto.codigo_funcionario.values[0], df_ponto.nome.values[0], "")
+            # Cria o objeto Funcionario
+            funcionario = Funcionario(
+                df_funcionario.codigo_funcionario.values[0],
+                df_funcionario.nome.values[0],
+                df_funcionario.cargo.values[0]
+            )
 
-            ponto_atualizado = Ponto(df_ponto.codigo_ponto.values[0], 
-                                    df_ponto.data_ponto.values[0], 
-                                    df_ponto.hora_entrada.values[0], 
-                                    df_ponto.hora_saida.values[0], 
-                                    funcionario)
+            # Cria o objeto Ponto atualizado
+            ponto = Ponto(
+                ponto_atualizado['codigo_ponto'],
+                ponto_atualizado['data_ponto'],
+                ponto_atualizado['hora_entrada'],
+                ponto_atualizado['hora_saida'],
+                funcionario
+            )
 
-            print(ponto_atualizado)
-            return ponto_atualizado
+            print("Ponto atualizado com sucesso:")
+            print(f"Código: {ponto.get_codigo_ponto()}")
+            print(f"Data: {ponto.get_data_ponto()}")
+            print(f"Entrada: {ponto.get_hora_entrada()}")
+            print(f"Saída: {ponto.get_hora_saida()}")
+            print(f"Funcionário: {ponto.get_funcionario().get_nome()}")
+
+            self.mongo.close()
+            return ponto
         else:
             print(f"O código {codigo_ponto} não existe.")
+            self.mongo.close()
             return None
 
     def excluir_ponto(self):
-        oracle = OracleQueries(can_write=True)
-        oracle.connect()
+        self.mongo.connect()
 
         try:
-            codigo_ponto = int(input("Código do Ponto que irá excluir: "))
+            codigo_ponto = input("Código do Ponto que irá excluir: ")
         except ValueError:
             print("Entrada inválida. O código do ponto deve ser um número inteiro.")
             return None
 
-        if not self.verifica_existencia_ponto(oracle, codigo_ponto):
-            oracle.write(f"delete from pontos where codigo_ponto = {codigo_ponto}")
-            print("Ponto removido com sucesso!")
+        if not self.verifica_existencia_ponto(codigo_ponto):
+            # Recupera os dados do ponto antes de excluir
+            ponto = self.mongo.db['pontos'].find_one({'codigo_ponto': codigo_ponto})
+            
+            # Recupera os dados do funcionário
+            df_funcionario = self.ctrl_funcionario.recupera_funcionario(
+                ponto['codigo_funcionario'], 
+                external=True
+            )
+
+            # Remove o ponto
+            self.mongo.db['pontos'].delete_one({'codigo_ponto': codigo_ponto})
+
+            # Cria o objeto Funcionario
+            funcionario = Funcionario(
+                df_funcionario.codigo_funcionario.values[0],
+                df_funcionario.nome.values[0],
+                df_funcionario.cargo.values[0]
+            )
+
+            # Cria o objeto do ponto excluído para exibição
+            ponto_excluido = Ponto(
+                ponto['codigo_ponto'],
+                ponto['data_ponto'],
+                ponto['hora_entrada'],
+                ponto['hora_saida'],
+                funcionario
+            )
+
+            print("Ponto removido com sucesso:")
+            print(f"Código: {ponto_excluido.get_codigo_ponto()}")
+            print(f"Data: {ponto_excluido.get_data_ponto()}")
+            print(f"Entrada: {ponto_excluido.get_hora_entrada()}")
+            print(f"Saída: {ponto_excluido.get_hora_saida()}")
+            print(f"Funcionário: {ponto_excluido.get_funcionario().get_nome()}")
+            
+            self.mongo.close()
         else:
             print(f"O código {codigo_ponto} não existe.")
+            self.mongo.close()
 
-    def verifica_existencia_ponto(self, oracle: OracleQueries, codigo:int=None) -> bool:
-        df_ponto = oracle.sqlToDataFrame(f"select codigo_ponto from pontos where codigo_ponto = {codigo}")
-        return df_ponto.empty  # Retorna True se o ponto existir
+    def verifica_existencia_ponto(self, codigo_ponto: str) -> bool:
+        # Verifica se existe um ponto com o código informado
+        df_ponto = pd.DataFrame(
+            self.mongo.db['pontos'].find(
+                {'codigo_ponto': codigo_ponto},
+                {'codigo_ponto': 1, '_id': 0}
+            )
+        )
+        return df_ponto.empty

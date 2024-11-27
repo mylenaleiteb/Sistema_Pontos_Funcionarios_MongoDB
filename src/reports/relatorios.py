@@ -30,8 +30,8 @@ class RelatorioMongo:
         mongo.close()
         print(df_funcionarios)
         input("Pressione Enter para Sair do Relatório de Funcionarios")
-    
-            
+        
+                
     def get_relatorio_pontos(self):
             mongo = MongoQueries()
             mongo.connect()
@@ -51,7 +51,7 @@ class RelatorioMongo:
             mongo.close()
             print(df_pontos)
             input("Pressione Enter para Sair do Relatório de Pontos")
-             
+                
     def get_relatorio_pontos_funcionarios(self):
         try:
             # Conectar ao MongoDB
