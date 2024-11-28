@@ -29,7 +29,7 @@ class RelatorioMongo:
         df_funcionarios = pd.DataFrame(list(query_result))
         mongo.close()
         print(df_funcionarios)
-        input("Pressione Enter para Sair do Relatório de Funcionarios")
+        input("Pressione Enter para Continuar")
         
                 
     def get_relatorio_pontos(self):
@@ -50,7 +50,7 @@ class RelatorioMongo:
             df_pontos = pd.DataFrame(list(query_result))
             mongo.close()
             print(df_pontos)
-            input("Pressione Enter para Sair do Relatório de Pontos")
+            input("Pressione Enter para Continuar")
                 
     def get_relatorio_pontos_funcionarios(self):
         try:
